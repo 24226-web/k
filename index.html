@@ -188,15 +188,14 @@
   // -------------------------------------------------------------
   // ⚙️ [1] Firebase 콘솔에서 발급받은 SDK Config 항목을 채워주세요!
   // -------------------------------------------------------------
-  const firebaseConfig = {
-    apiKey: "여기에_파이어베이스_API키_입력",
-    authDomain: "내프로젝트.firebaseapp.com",
-    projectId: "내프로젝트-ID",
-    storageBucket: "내프로젝트.appspot.com",
-    messagingSenderId: "내개인번호",
-    appId: "내앱아이디"
-  };
-
+const firebaseConfig = {
+  apiKey: "AIzaSy...",        // ← 실제 값이 자동 생성됨
+  authDomain: "cardian-xxxx.firebaseapp.com",
+  projectId: "cardian-xxxx",
+  storageBucket: "cardian-xxxx.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123456789:web:abc..."
+};
   // 서비스 인스턴스 초기화
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
