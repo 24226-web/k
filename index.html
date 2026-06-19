@@ -178,19 +178,22 @@
     <div id="result-box">차량 상태 사진을 업로드하고 API Key를 입력한 후 '스마트 AI 진단 시작' 버튼을 눌러주세요.</div>
 
     <button class="btn-primary" id="btn-scan" style="margin-bottom: 12px;">🔍 스마트 AI 진단 시작</button>
-    <button class="btn-accent" id="btn-save">💾 정비 일지(Firebase)에 기록 보관</button>
+    <button class="btn-accent" id="btn-save">💾 정비 일지(Realtime DB)에 기록 보관</button>
     
-    <div class="guide">Powered by OpenAI Vision & Firebase Client SDK</div>
+    <div class="guide">Powered by OpenAI Vision & Firebase Realtime Database</div>
   </div>
 </div>
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
   import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-  import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+  
+  // 🔗 [변경] Firestore 대신 Realtime Database 모듈을 불러옵니다.
+  import { getDatabase, ref, push, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
   // -------------------------------------------------------------
-  // ⚙️ [1] Firebase 콘솔에서 발급받은 SDK Config 항목 (클라이언트 키이므로 공개 가능)
+  // ⚙️ [주의] Realtime Database를 쓸 때는 databaseURL 항목이 있어야 안정적입니다.
+  // 콘솔에서 본인의 databaseURL을 확인하고 아래에 추가해 주세요!
   // -------------------------------------------------------------
   const firebaseConfig = {
     apiKey: "AIzaSyCxeKNi7l3OFy1we6uUthXXlwD53avUCr8",
@@ -199,12 +202,14 @@
     storageBucket: "afaf-f59c4.firebasestorage.app",
     messagingSenderId: "663853802891",
     appId: "1:663853802891:web:d8c6896049319af95ffb8e",
-    measurementId: "G-C758V6XHM1"
+    measurementId: "G-C758V6XHM1",
+    databaseURL: "https://test-5dcd2-default-rtdb.firebaseio.com/" // 👈 본인의 Realtime DB 주소로 자동 연동됩니다.
   };
+
   // 서비스 인스턴스 초기화
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
-  const db = getFirestore(app);
+  const db = getDatabase(app); // 🔗 [변경] Realtime DB 인스턴스 가져오기
 
   let base64CarImage = "";
   let currentDiagnosisText = "";
@@ -276,10 +281,9 @@
   document.getElementById("btn-scan").addEventListener("click", async () => {
     if (!base64CarImage) return alert("진단할 자동차 상태 사진을 먼저 등록해 주세요! 🚗");
     
-    // 🔑 [수정] 사용자가 화면에 입력한 API 키 가져오기 및 검증
     const openAiApiKey = document.getElementById("openai-key-input").value.trim();
-    if (!openAiApiKey) return alert("OpenAI API Key를 입력해 주세요! 키가 없으면 AI 진단을 진행할 수 없습니다.");
-    if (!openAiApiKey.startsWith("sk-")) return alert("올바른 OpenAI API Key 형식이 아닙니다. (sk-로 시작해야 합니다)");
+    if (!openAiApiKey) return alert("OpenAI API Key를 입력해 주세요!");
+    if (!openAiApiKey.startsWith("sk-")) return alert("올바른 OpenAI API Key 형식이 아닙니다.");
 
     document.getElementById("result-box").innerText = "⚙️ 카디안 원격 스캐너 작동 중... AI가 이미지를 추출 및 판독하고 있습니다.";
     
@@ -288,7 +292,7 @@
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${openAiApiKey}` // [수정] 동적으로 입력받은 키 반영
+          "Authorization": `Bearer ${openAiApiKey}`
         },
         body: JSON.stringify({
           model: "gpt-4o-mini",
@@ -320,12 +324,12 @@
       currentDiagnosisText = data.choices[0].message.content;
       document.getElementById("result-box").innerText = currentDiagnosisText;
       
-      document.getElementById("btn-save").style.display = "block"; // 클라우드 저장 버튼 활성화
-      speakCarExpertTTS(currentDiagnosisText); // 🔊 TTS 재생
+      document.getElementById("btn-save").style.display = "block"; 
+      speakCarExpertTTS(currentDiagnosisText); 
 
     } catch (error) {
       console.error(error);
-      document.getElementById("result-box").innerText = `차량 진단 중 오류가 발생했습니다.\n이유: ${error.message}\n\n입력하신 OpenAI API 키가 올바른지, 잔액이 남아있는지 확인하세요.`;
+      document.getElementById("result-box").innerText = `차량 진단 중 오류가 발생했습니다.\n이유: ${error.message}`;
     }
   });
 
@@ -337,33 +341,34 @@
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "ko-KR";
-    utterance.rate = 0.92; // 신중하고 정확한 정보 전달 속도
-    utterance.pitch = 0.85; // 묵직하고 믿음직스러운 정비소 소장님 저음 톤
+    utterance.rate = 0.92;
+    utterance.pitch = 0.85;
     window.speechSynthesis.speak(utterance);
   }
 
   /* ==========================================
-     💾 관문 5: Firestore 유저 고유 결합형 데이터 실시간 적재
+     💾 관문 5: [변경] Realtime Database 실시간 데이터 저장
      ========================================== */
   document.getElementById("btn-save").addEventListener("click", async () => {
     if (!currentDiagnosisText || !currentUser) return;
     try {
       document.getElementById("btn-save").innerText = "⏳ 정비 일지 기록 중...";
       
-      // 'car_logs' 컬렉션에 사용자 UID와 진단 정보 결합 저장
-      const docRef = await addDoc(collection(db, "car_logs"), {
+      // 🔗 Realtime DB의 'car_logs' 노드에 push() 함수로 데이터 추가
+      const logRef = ref(db, 'car_logs');
+      await push(logRef, {
         uid: currentUser.uid,
         userEmail: currentUser.email,
         diagnosis: currentDiagnosisText,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp() // 실시간 DB용 타임스탬프
       });
 
-      alert(`🎉 [저장 완료] 운전자님의 고유 정비 일지에 진단 내역이 정상 등록되었습니다!`);
-      document.getElementById("btn-save").innerText = "💾 정비 일지(Firebase)에 기록 보관";
+      alert(`🎉 [Realtime DB 저장 완료] 고유 정비 일지에 실시간으로 내역이 등록되었습니다!`);
+      document.getElementById("btn-save").innerText = "💾 정비 일지(Realtime DB)에 기록 보관";
 
     } catch (e) {
       console.error(e);
-      alert("Firebase Firestore 업로드 실패. 보안 규칙(Rules)이 테스트 모드로 열려있는지 확인하세요.");
+      alert("Realtime Database 업로드 실패. Firebase 콘솔의 Rules(규칙) 탭을 확인하세요.");
     }
   });
 
@@ -372,11 +377,8 @@
     currentDiagnosisText = "";
     document.getElementById("preview-img").style.display = "none";
     document.getElementById("upload-hint").innerText = "📸 클릭하여 진단할 차량 사진을 등록하세요";
-    document.getElementById("openai-key-input").value = ""; // [수정] 로그아웃 시 키 입력창도 초기화
+    document.getElementById("openai-key-input").value = "";
     document.getElementById("result-box").innerText = "차량 상태 사진을 업로드한 후 '스마트 AI 진단 시작' 버튼을 눌러주세요.";
     document.getElementById("btn-save").style.display = "none";
     window.speechSynthesis.cancel();
   }
-</script>
-</body>
-</html>
