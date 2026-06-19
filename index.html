@@ -50,7 +50,7 @@
     .input-group {
       margin-bottom: 15px;
     }
-    input[type="email"], input[type="password"] {
+    input[type="email"], input[type="password"], input[type="text"] {
       width: 100%;
       height: 50px;
       padding: 12px;
@@ -171,7 +171,11 @@
       <img id="preview-img" alt="차량 진단 이미지 미리보기" />
     </div>
 
-    <div id="result-box">차량 상태 사진을 업로드한 후 '스마트 AI 진단 시작' 버튼을 눌러주세요.</div>
+    <div class="input-group">
+      <input type="password" id="openai-key-input" placeholder="🔑 여기에 OpenAI API Key (sk-...) 입력" />
+    </div>
+
+    <div id="result-box">차량 상태 사진을 업로드하고 API Key를 입력한 후 '스마트 AI 진단 시작' 버튼을 눌러주세요.</div>
 
     <button class="btn-primary" id="btn-scan" style="margin-bottom: 12px;">🔍 스마트 AI 진단 시작</button>
     <button class="btn-accent" id="btn-save">💾 정비 일지(Firebase)에 기록 보관</button>
@@ -186,7 +190,7 @@
   import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
   // -------------------------------------------------------------
-  // ⚙️ [1] Firebase 콘솔에서 발급받은 SDK Config 항목을 채워주세요!
+  // ⚙️ [1] Firebase 콘솔에서 발급받은 SDK Config 항목 (클라이언트 키이므로 공개 가능)
   // -------------------------------------------------------------
   const firebaseConfig = {
     apiKey: "AIzaSyCxeKNi7l3OFy1we6uUthXXlwD53avUCr8",
@@ -201,11 +205,6 @@
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
   const db = getFirestore(app);
-
-  // -------------------------------------------------------------
-  // 🔑 [2] 새롭게 발급받은 보안 처리된 OpenAI API 키를 여기에 넣어주세요!
-  // -------------------------------------------------------------
-  const OPENAI_API_KEY = "여기에_새로_발급받은_보안_키_입력";
 
   let base64CarImage = "";
   let currentDiagnosisText = "";
@@ -276,7 +275,11 @@
      ========================================== */
   document.getElementById("btn-scan").addEventListener("click", async () => {
     if (!base64CarImage) return alert("진단할 자동차 상태 사진을 먼저 등록해 주세요! 🚗");
-    if (OPENAI_API_KEY.includes("입력")) return alert("코드 내부의 OpenAI API 키 세팅이 누락되었습니다.");
+    
+    // 🔑 [수정] 사용자가 화면에 입력한 API 키 가져오기 및 검증
+    const openAiApiKey = document.getElementById("openai-key-input").value.trim();
+    if (!openAiApiKey) return alert("OpenAI API Key를 입력해 주세요! 키가 없으면 AI 진단을 진행할 수 없습니다.");
+    if (!openAiApiKey.startsWith("sk-")) return alert("올바른 OpenAI API Key 형식이 아닙니다. (sk-로 시작해야 합니다)");
 
     document.getElementById("result-box").innerText = "⚙️ 카디안 원격 스캐너 작동 중... AI가 이미지를 추출 및 판독하고 있습니다.";
     
@@ -285,7 +288,7 @@
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${OPENAI_API_KEY}`
+          "Authorization": `Bearer ${openAiApiKey}` // [수정] 동적으로 입력받은 키 반영
         },
         body: JSON.stringify({
           model: "gpt-4o-mini",
@@ -308,6 +311,11 @@
         })
       });
 
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || "API 요청에 실패했습니다.");
+      }
+
       const data = await response.json();
       currentDiagnosisText = data.choices[0].message.content;
       document.getElementById("result-box").innerText = currentDiagnosisText;
@@ -317,7 +325,7 @@
 
     } catch (error) {
       console.error(error);
-      document.getElementById("result-box").innerText = "차량 진단 중 오류가 발생했습니다. 키 설정 및 파일 형식을 확인하세요.";
+      document.getElementById("result-box").innerText = `차량 진단 중 오류가 발생했습니다.\n이유: ${error.message}\n\n입력하신 OpenAI API 키가 올바른지, 잔액이 남아있는지 확인하세요.`;
     }
   });
 
@@ -364,6 +372,7 @@
     currentDiagnosisText = "";
     document.getElementById("preview-img").style.display = "none";
     document.getElementById("upload-hint").innerText = "📸 클릭하여 진단할 차량 사진을 등록하세요";
+    document.getElementById("openai-key-input").value = ""; // [수정] 로그아웃 시 키 입력창도 초기화
     document.getElementById("result-box").innerText = "차량 상태 사진을 업로드한 후 '스마트 AI 진단 시작' 버튼을 눌러주세요.";
     document.getElementById("btn-save").style.display = "none";
     window.speechSynthesis.cancel();
